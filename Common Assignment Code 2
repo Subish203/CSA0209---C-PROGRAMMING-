@@ -1,0 +1,360 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define MAX_CONSUMERS 50
+#define MAX_HOURS 24
+
+typedef struct {
+    int hour;
+    float consumption;
+    float allocated;
+} HourlyData;
+
+typedef struct {
+    int consumerId;
+    int priority;
+    HourlyData hourly[MAX_HOURS];
+    int recordCount;
+} Consumer;
+
+Consumer consumers[MAX_CONSUMERS];
+int consumerCount = 0;
+
+/* Function to add a consumer */
+void addConsumer()
+{
+    static int idGenerator = 1000;
+    Consumer *c;
+
+    if (consumerCount >= MAX_CONSUMERS) {
+        printf("Consumer limit reached!\n");
+        return;
+    }
+
+    c = &consumers[consumerCount];
+
+    c->consumerId = ++idGenerator;
+
+    printf("\nEnter Priority (1-4): ");
+    scanf("%d", &c->priority);
+
+    if (c->priority < 1 || c->priority > 4) {
+        printf("Invalid priority! Enter a value between 1 and 4.\n");
+        return;
+    }
+
+    c->recordCount = 0;
+    consumerCount++;
+
+    printf("Consumer added successfully!\n");
+    printf("Consumer ID: %d\n", c->consumerId);
+}
+
+/* Function to update hourly consumption */
+void updateConsumption()
+{
+    int id, hour;
+    float consumption;
+    Consumer *c = NULL;
+
+    printf("\nEnter Consumer ID: ");
+    scanf("%d", &id);
+
+    for (int i = 0; i < consumerCount; i++) {
+        if (consumers[i].consumerId == id) {
+            c = &consumers[i];
+            break;
+        }
+    }
+
+    if (c == NULL) {
+        printf("Consumer not found!\n");
+        return;
+    }
+
+    printf("Enter Hour (0-23): ");
+    scanf("%d", &hour);
+
+    if (hour < 0 || hour >= MAX_HOURS) {
+        printf("Invalid hour!\n");
+        return;
+    }
+
+    printf("Enter Consumption (kWh): ");
+    scanf("%f", &consumption);
+
+    if (consumption < 0) {
+        printf("Consumption cannot be negative!\n");
+        return;
+    }
+
+    c->hourly[hour].hour = hour;
+    c->hourly[hour].consumption = consumption;
+    c->hourly[hour].allocated = 0;
+
+    if (hour >= c->recordCount)
+        c->recordCount = hour + 1;
+
+    printf("Consumption updated successfully!\n");
+}
+
+/* Function to sort consumers by priority */
+void sortByPriority()
+{
+    Consumer temp;
+
+    for (int i = 0; i < consumerCount - 1; i++) {
+        for (int j = i + 1; j < consumerCount; j++) {
+
+            if (consumers[i].priority < consumers[j].priority) {
+                temp = consumers[i];
+                consumers[i] = consumers[j];
+                consumers[j] = temp;
+            }
+        }
+    }
+}
+
+/* Greedy power allocation */
+void allocatePower()
+{
+    float capacity;
+    float remaining;
+    float demand, allocation;
+
+    printf("\nEnter Available Power Capacity (kWh): ");
+    scanf("%f", &capacity);
+
+    if (capacity < 0) {
+        printf("Invalid capacity!\n");
+        return;
+    }
+
+    sortByPriority();
+
+    remaining = capacity;
+
+    printf("\n--- Power Allocation Result ---\n");
+
+    for (int i = 0; i < consumerCount; i++) {
+
+        demand = 0;
+
+        for (int h = 0; h < consumers[i].recordCount; h++) {
+            demand += consumers[i].hourly[h].consumption;
+        }
+
+        allocation = (demand < remaining) ? demand : remaining;
+
+        remaining -= allocation;
+
+        printf("\nConsumer ID : %d", consumers[i].consumerId);
+        printf("\nPriority    : %d", consumers[i].priority);
+        printf("\nDemand      : %.2f kWh", demand);
+        printf("\nAllocated   : %.2f kWh", allocation);
+
+        if (allocation < demand)
+            printf("\nStatus      : SHORTAGE");
+        else
+            printf("\nStatus      : FULLY SUPPLIED");
+
+        printf("\n");
+
+        /* Store allocated power proportionally */
+        if (demand > 0) {
+            for (int h = 0; h < consumers[i].recordCount; h++) {
+                consumers[i].hourly[h].allocated =
+                    consumers[i].hourly[h].consumption *
+                    (allocation / demand);
+            }
+        }
+
+        if (remaining <= 0)
+            remaining = 0;
+    }
+
+    printf("\nRemaining Power: %.2f kWh\n", remaining);
+}
+
+/* Search consumer */
+void searchConsumer()
+{
+    int id;
+    int found = 0;
+
+    printf("\nEnter Consumer ID to search: ");
+    scanf("%d", &id);
+
+    for (int i = 0; i < consumerCount; i++) {
+
+        if (consumers[i].consumerId == id) {
+
+            found = 1;
+
+            printf("\nConsumer Found!\n");
+            printf("Consumer ID : %d\n", consumers[i].consumerId);
+            printf("Priority    : %d\n", consumers[i].priority);
+            printf("Records     : %d\n", consumers[i].recordCount);
+
+            for (int h = 0; h < consumers[i].recordCount; h++) {
+                printf("Hour %02d : Consumption = %.2f kWh, "
+                       "Allocated = %.2f kWh\n",
+                       consumers[i].hourly[h].hour,
+                       consumers[i].hourly[h].consumption,
+                       consumers[i].hourly[h].allocated);
+            }
+            break;
+        }
+    }
+
+    if (!found)
+        printf("Consumer not found!\n");
+}
+
+/* Save data to file */
+void saveToFile()
+{
+    FILE *fp;
+
+    fp = fopen("power_records.txt", "w");
+
+    if (fp == NULL) {
+        printf("Error opening file!\n");
+        return;
+    }
+
+    fprintf(fp, "SMART POWER DISTRIBUTION RECORDS\n");
+    fprintf(fp, "================================\n");
+
+    for (int i = 0; i < consumerCount; i++) {
+
+        fprintf(fp, "\nConsumer ID: %d\n",
+                consumers[i].consumerId);
+
+        fprintf(fp, "Priority: %d\n",
+                consumers[i].priority);
+
+        for (int h = 0; h < consumers[i].recordCount; h++) {
+
+            fprintf(fp,
+                    "Hour: %d | Consumption: %.2f | Allocated: %.2f\n",
+                    consumers[i].hourly[h].hour,
+                    consumers[i].hourly[h].consumption,
+                    consumers[i].hourly[h].allocated);
+        }
+    }
+
+    fclose(fp);
+
+    printf("Records saved successfully to power_records.txt\n");
+}
+
+/* Load data from file */
+void loadFromFile()
+{
+    FILE *fp;
+
+    fp = fopen("power_records.txt", "r");
+
+    if (fp == NULL) {
+        printf("No previous records found.\n");
+        return;
+    }
+
+    printf("Previous power records found.\n");
+    fclose(fp);
+}
+
+/* Display all consumers */
+void displayConsumers()
+{
+    if (consumerCount == 0) {
+        printf("\nNo consumers available.\n");
+        return;
+    }
+
+    printf("\n===== CONSUMER DETAILS =====\n");
+
+    for (int i = 0; i < consumerCount; i++) {
+
+        printf("\nConsumer ID: %d",
+               consumers[i].consumerId);
+
+        printf("\nPriority: %d",
+               consumers[i].priority);
+
+        for (int h = 0; h < consumers[i].recordCount; h++) {
+
+            printf("\n  Hour %02d | Consumption: %.2f kWh | "
+                   "Allocated: %.2f kWh",
+                   consumers[i].hourly[h].hour,
+                   consumers[i].hourly[h].consumption,
+                   consumers[i].hourly[h].allocated);
+        }
+
+        printf("\n");
+    }
+}
+
+/* Main function */
+int main()
+{
+    int choice;
+
+    loadFromFile();
+
+    do {
+        printf("\n\n====================================");
+        printf("\n SMART POWER DISTRIBUTION SYSTEM");
+        printf("\n====================================");
+        printf("\n1. Add Consumer");
+        printf("\n2. Update Consumption");
+        printf("\n3. Allocate Power");
+        printf("\n4. Search Consumer");
+        printf("\n5. Display Consumers");
+        printf("\n6. Save Records");
+        printf("\n7. Exit");
+
+        printf("\nEnter your choice: ");
+        scanf("%d", &choice);
+
+        switch (choice) {
+
+            case 1:
+                addConsumer();
+                break;
+
+            case 2:
+                updateConsumption();
+                break;
+
+            case 3:
+                allocatePower();
+                break;
+
+            case 4:
+                searchConsumer();
+                break;
+
+            case 5:
+                displayConsumers();
+                break;
+
+            case 6:
+                saveToFile();
+                break;
+
+            case 7:
+                saveToFile();
+                printf("\nExiting system...\n");
+                break;
+
+            default:
+                printf("\nInvalid choice! Try again.\n");
+        }
+
+    } while (choice != 7);
+
+    return 0;
+}
